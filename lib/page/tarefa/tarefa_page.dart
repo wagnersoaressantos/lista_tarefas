@@ -1,39 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:lista_tarefas/model/tarefas_modelo.dart';
 import 'package:lista_tarefas/repository/tarefas_repository.dart';
+import 'package:provider/provider.dart';
 
-class TarefaPage extends StatefulWidget {
-  const TarefaPage({super.key});
-
-  @override
-  State<TarefaPage> createState() => _TarefaPageState();
-}
-
-class _TarefaPageState extends State<TarefaPage> {
-  TarefasRepositoy tarefaRepository = TarefasRepositoy();
-  var _tarefas = TarefasModelo([]);
+class TarefaPage extends StatelessWidget {
   var descricaoContoller = TextEditingController();
-  var apenasNaoConcluidos = false;
-  var carregando = false;
 
-  @override
-  void initState() {
-    super.initState();
-    obterTarefas();
-  }
-
-  void obterTarefas() async {
-    setState(() {
-      carregando = true;
-    });
-    _tarefas = await tarefaRepository.obterTarefas(apenasNaoConcluidos);
-    setState(() {
-      carregando = false;
-    });
-  }
+  TarefaPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final tarefaRepo = Provider.of<TarefasRepositoy>(context, listen: false);
     return Scaffold(
       appBar: AppBar(title: Text("Tarefas"), centerTitle: true),
       floatingActionButton: FloatingActionButton(
@@ -55,12 +32,10 @@ class _TarefaPageState extends State<TarefaPage> {
                   ),
                   TextButton(
                     onPressed: () async {
-                      await tarefaRepository.criar(
+                      tarefaRepo.criar(
                         TarefaModelo.criar(descricaoContoller.text, false),
                       );
                       Navigator.pop(context);
-                      obterTarefas();
-                      setState(() {});
                     },
                     child: const Text("Salvar"),
                   ),
@@ -70,60 +45,82 @@ class _TarefaPageState extends State<TarefaPage> {
           );
         },
       ),
-      body: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    "Apenas não concluídos",
-                    style: TextStyle(fontSize: 18),
+      body: Consumer<TarefasRepositoy>(
+        builder: (context, tarefasRepositoy, widget) {
+          if (tarefasRepositoy.carregando) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (tarefasRepositoy.tarefas.isEmpty) {
+            return Center(
+              child: Text(
+                "Nenhuma tarefa cadastrada",
+                style: TextStyle(fontSize: 18, color: Colors.grey),
+              ),
+            );
+          }
+          return Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
                   ),
-                  Switch(
-                    value: apenasNaoConcluidos,
-                    onChanged: (bool value) {
-                      apenasNaoConcluidos = value;
-                      obterTarefas();
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Apenas não concluídos",
+                        style: TextStyle(fontSize: 18),
+                      ),
+                      Consumer<TarefasRepositoy>(
+                        builder: (context, tarefasRepositoy, widget) {
+                          return Switch(
+                            value: tarefasRepositoy.apenasNaoConcluidos,
+                            onChanged: (bool value) {
+                              tarefaRepo.apenasNaoConcluidos = value;
+                            },
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Consumer<TarefasRepositoy>(
+                    builder: (context, tarefasRepositoy, widget) {
+                      return ListView.builder(
+                        itemCount: tarefasRepositoy.tarefas.length,
+                        itemBuilder: (BuildContext bc, int index) {
+                          var tarefa = tarefasRepositoy.tarefas[index];
+                          return Dismissible(
+                            onDismissed:
+                                (DismissDirection dismissDirection) async {
+                                  tarefaRepo.remover(tarefa.objectId);
+                                },
+                            key: Key(tarefa.descricao),
+                            child: ListTile(
+                              title: Text(tarefa.descricao),
+                              trailing: Switch(
+                                value: tarefa.concluido,
+                                onChanged: (bool value) async {
+                                  tarefa.concluido = value;
+                                  tarefaRepo.atualizar(tarefa);
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                      );
                     },
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            carregando
-                ? CircularProgressIndicator()
-                : Expanded(
-                    child: ListView.builder(
-                      itemCount: _tarefas.tarefas.length,
-                      itemBuilder: (BuildContext bc, int index) {
-                        var tarefa = _tarefas.tarefas[index];
-                        return Dismissible(
-                          onDismissed:
-                              (DismissDirection dismissDirection) async {
-                                await tarefaRepository.remover(tarefa.objectId);
-                                obterTarefas();
-                              },
-                          key: Key(tarefa.descricao),
-                          child: ListTile(
-                            title: Text(tarefa.descricao),
-                            trailing: Switch(
-                              onChanged: (bool value) async {
-                                tarefa.concluido = value;
-                                await tarefaRepository.atualizar(tarefa);
-                                obterTarefas();
-                              },
-                              value: tarefa.concluido,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
